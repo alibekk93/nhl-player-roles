@@ -87,7 +87,7 @@ def parse_player_stats(html: str) -> list[dict]:
     return players
 
 # ── pipeline ─────────────────────────────────────────────────────────────────
-def run_pipeline(output_path: str = "nhl_player_stats.csv") -> pd.DataFrame:
+def run_pipeline(output_path: str = "data_raw.csv") -> pd.DataFrame:
     all_dfs = []
 
     # 1. for each season, fetch teams, then fetch player stats for each team
