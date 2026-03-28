@@ -1,0 +1,2 @@
+1. change parse_active_teams to take in a season and parse teams for that season
+2. add season as column
