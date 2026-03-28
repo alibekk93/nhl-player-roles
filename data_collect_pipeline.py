@@ -1,3 +1,4 @@
+import argparse
 import time
 import requests
 import pandas as pd
@@ -6,7 +7,6 @@ from bs4 import BeautifulSoup
 # ── constants ────────────────────────────────────────────────────────────────
 
 BASE_URL = "https://www.hockey-reference.com"
-SEASONS = [2024, 2025, 2026]
 DELAY = 4  # seconds between requests — be polite to hockey-reference
 
 STATS_TO_KEEP = [
@@ -87,11 +87,11 @@ def parse_player_stats(html: str) -> list[dict]:
     return players
 
 # ── pipeline ─────────────────────────────────────────────────────────────────
-def run_pipeline(output_path: str = "data_raw.csv") -> pd.DataFrame:
+
+def run_pipeline(seasons: list[int], output_path: str = "data_raw.csv") -> pd.DataFrame:
     all_dfs = []
 
-    # 1. for each season, fetch teams, then fetch player stats for each team
-    for season in SEASONS:
+    for season in seasons:
         print(f"\nFetching teams for {season}...")
         season_html = fetch_html(f"{BASE_URL}/leagues/NHL_{season}.html")
         teams = parse_active_teams(season_html)
@@ -121,18 +121,30 @@ def run_pipeline(output_path: str = "data_raw.csv") -> pd.DataFrame:
 
             time.sleep(DELAY)
 
-    # 2. combine and save
     final_df = pd.concat(all_dfs, ignore_index=True)
 
-    # reorder columns so identifiers come first
     id_cols = ["player_id", "name", "team", "season", "pos", "games", "toi"]
-    stat_cols = STATS_TO_KEEP
-    final_df = final_df[id_cols + stat_cols]
+    final_df = final_df[id_cols + STATS_TO_KEEP]
 
     final_df.to_csv(output_path, index=False)
     print(f"\nSaved {len(final_df)} rows to {output_path}")
 
     return final_df
 
+
+def main():
+    parser = argparse.ArgumentParser(description="Scrape NHL player stats from hockey-reference.com.")
+    parser.add_argument("--seasons", nargs="+", type=int, default=[2024, 2025, 2026],
+                        help="Season years to scrape (default: 2024 2025 2026)")
+    parser.add_argument("--output", default="data_raw.csv",
+                        help="Path to save raw stats CSV (default: data_raw.csv)")
+    args = parser.parse_args()
+
+    print(f"Seasons: {args.seasons}")
+    print(f"Output:  {args.output}")
+
+    run_pipeline(seasons=args.seasons, output_path=args.output)
+
+
 if __name__ == "__main__":
-    df = run_pipeline()
+    main()
