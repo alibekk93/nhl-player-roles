@@ -86,10 +86,43 @@ def parse_player_stats(html: str) -> list[dict]:
 
     return players
 
+
+def resolve_seasons(seasons: list[int], season_range: list[int] | None) -> list[int]:
+    """Combine --seasons and --season-range into a single sorted, deduplicated list."""
+    result = set(seasons)
+    if season_range:
+        if len(season_range) != 2:
+            raise ValueError("--season-range requires exactly 2 values: START END")
+        start, end = season_range
+        if start > end:
+            raise ValueError(f"--season-range START must be <= END, got {start} {end}")
+        result.update(range(start, end + 1))
+    return sorted(result)
+
+
 # ── pipeline ─────────────────────────────────────────────────────────────────
 
-def run_pipeline(seasons: list[int], output_path: str = "data_raw.csv") -> pd.DataFrame:
-    all_dfs = []
+def run_pipeline(
+    seasons: list[int],
+    output_path: str = "data_raw.csv",
+    input_path: str | None = None,
+) -> pd.DataFrame:
+
+    # load existing data, drop seasons that will be overwritten
+    if input_path:
+        try:
+            existing_df = pd.read_csv(input_path)
+            retained_df = existing_df[~existing_df["season"].isin(seasons)]
+            dropped = existing_df["season"].isin(seasons).sum()
+            print(f"Loaded {len(existing_df)} rows from {input_path}")
+            print(f"  Dropping {dropped} rows for seasons {seasons} (will be re-fetched)")
+        except FileNotFoundError:
+            print(f"Input file {input_path} not found — starting fresh")
+            retained_df = pd.DataFrame()
+    else:
+        retained_df = pd.DataFrame()
+
+    all_dfs = [retained_df] if not retained_df.empty else []
 
     for season in seasons:
         print(f"\nFetching teams for {season}...")
@@ -133,17 +166,41 @@ def run_pipeline(seasons: list[int], output_path: str = "data_raw.csv") -> pd.Da
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape NHL player stats from hockey-reference.com.")
-    parser.add_argument("--seasons", nargs="+", type=int, default=[2024, 2025, 2026],
-                        help="Season years to scrape (default: 2024 2025 2026)")
-    parser.add_argument("--output", default="data_raw.csv",
-                        help="Path to save raw stats CSV (default: data_raw.csv)")
+    parser = argparse.ArgumentParser(
+        description="Scrape NHL player stats from hockey-reference.com.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        "--seasons", nargs="+", type=int, default=[],
+        help="Individual season years to scrape (e.g. --seasons 2024 2026)"
+    )
+    parser.add_argument(
+        "--season-range", nargs=2, type=int, metavar=("START", "END"),
+        help="Inclusive range of seasons (e.g. --season-range 2024 2026)"
+    )
+    parser.add_argument(
+        "--output", default="data_raw.csv",
+        help="Path to save output CSV (default: data_raw.csv)"
+    )
+    parser.add_argument(
+        "--input", default=None,
+        help="Path to existing CSV to update. Seasons being fetched will be overwritten."
+    )
     args = parser.parse_args()
 
-    print(f"Seasons: {args.seasons}")
+    try:
+        seasons = resolve_seasons(args.seasons, args.season_range)
+    except ValueError as e:
+        parser.error(str(e))
+
+    if not seasons:
+        parser.error("Provide at least one season via --seasons or --season-range")
+
+    print(f"Seasons: {seasons}")
+    print(f"Input:   {args.input or 'none (fresh run)'}")
     print(f"Output:  {args.output}")
 
-    run_pipeline(seasons=args.seasons, output_path=args.output)
+    run_pipeline(seasons=seasons, output_path=args.output, input_path=args.input)
 
 
 if __name__ == "__main__":
